@@ -36,6 +36,7 @@ class Config:
     max_retries: int = 3
     retry_backoff_seconds: float = 1.0
     max_pages: int = 100
+    last_connected_round_seconds: int = 3600
 
 
 def load_dotenv_file(path: str = ".env") -> None:
@@ -76,6 +77,7 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         max_retries=max(0, int(env.get("HTTP_MAX_RETRIES", "3"))),
         retry_backoff_seconds=max(0.0, float(env.get("HTTP_RETRY_BACKOFF_SECONDS", "1.0"))),
         max_pages=max(1, int(env.get("MERAKI_MAX_PAGES", "100"))),
+        last_connected_round_seconds=max(0, int(env.get("LAST_CONNECTED_ROUND_SECONDS", "3600"))),
     )
 
 
@@ -118,11 +120,44 @@ def iso_to_ns(value: str | None) -> int | None:
         return None
 
 
-def format_last_connected(epoch_seconds: int | float) -> str:
-    """Format Meraki lastSeen like the Dashboard Connected column, in UTC."""
-    connected = datetime.fromtimestamp(float(epoch_seconds), tz=timezone.utc)
+def parse_last_seen(value: Any) -> float | None:
+    """Return Unix seconds from Meraki lastSeen (epoch number, numeric string, or ISO-8601)."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        seconds = float(value)
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            seconds = float(text)
+        except ValueError:
+            try:
+                parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.timestamp()
+    if seconds > 1e12:  # milliseconds
+        seconds /= 1000.0
+    return seconds if seconds > 0 else None
+
+
+def format_last_connected(epoch_seconds: int | float, round_seconds: int = 0) -> str:
+    """Format Meraki lastSeen as a readable UTC date/time.
+
+    round_seconds floors the value (for example 3600 = hour) so the dimension
+    changes less often; values of 60 or more omit seconds from the display.
+    """
+    epoch = float(epoch_seconds)
+    if round_seconds > 0:
+        epoch = epoch - (epoch % round_seconds)
+    connected = datetime.fromtimestamp(epoch, tz=timezone.utc)
     hour = connected.hour % 12 or 12
-    return f"{connected:%m/%d/%Y} {hour}:{connected:%M:%S} {connected:%p} UTC"
+    clock = f"{hour}:{connected:%M}" + (f":{connected:%S}" if round_seconds < 60 else "")
+    return f"{connected:%m/%d/%Y} {clock} {connected:%p} UTC"
 
 
 RETRYABLE_HTTP_STATUS = {408, 425, 429, 500, 502, 503, 504}
@@ -327,7 +362,7 @@ def _device_tags(device: dict[str, Any], org_id: str, serial: str | None = None)
     }
 
 
-def build_metrics(payloads: dict[str, Any], org_id: str, timestamp_ns: int | None = None) -> list[str]:
+def build_metrics(payloads: dict[str, Any], org_id: str, timestamp_ns: int | None = None, last_connected_round_seconds: int = 3600) -> list[str]:
     devices = {d.get("serial", ""): d for d in payloads.get("devices", [])}
     result: list[str] = []
 
@@ -479,13 +514,15 @@ def build_metrics(payloads: dict[str, Any], org_id: str, timestamp_ns: int | Non
                 "transmitted_mb": sent_kb / 1024.0,
                 "received_mb": received_kb / 1024.0,
             }
-            last_seen = client.get("lastSeen")
+            last_seen = parse_last_seen(client.get("lastSeen"))
             client_timestamp = timestamp_ns
-            if isinstance(last_seen, (int, float)):
-                client_timestamp = int(float(last_seen) * 1_000_000_000)
-                connected = datetime.fromtimestamp(float(last_seen), tz=timezone.utc)
+            # A dimension (tag) so Kentik tables show it as readable text.
+            tags["last_connected"] = "unknown"
+            if last_seen is not None:
+                client_timestamp = int(last_seen * 1_000_000_000)
+                connected = datetime.fromtimestamp(last_seen, tz=timezone.utc)
                 fields["connected_at"] = connected.isoformat().replace("+00:00", "Z")
-                fields["last_connected"] = format_last_connected(last_seen)
+                tags["last_connected"] = format_last_connected(last_seen, last_connected_round_seconds)
             signal = signal_by_key.get(f"{network_id}|{mac.lower()}") or signal_by_mac.get(mac.lower(), {})
             if signal.get("rssi") is not None:
                 fields["signal_strength_dbm"] = float(signal["rssi"])
@@ -637,7 +674,7 @@ def collect_once(config: Config, mode: str, dry_run: bool = False) -> list[str]:
                     if isinstance(rates, list):
                         payloads["wireless_data_rates"][f"{network_id}|{mac}"] = rates
 
-    metrics = build_metrics(payloads, config.org_id)
+    metrics = build_metrics(payloads, config.org_id, last_connected_round_seconds=config.last_connected_round_seconds)
     body = "\n".join(metrics) + "\n"
     if dry_run or mode == "mock":
         print(body, end="")

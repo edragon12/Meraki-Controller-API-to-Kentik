@@ -16,6 +16,7 @@ from collector import (
     load_config,
     load_dotenv_file,
     mock_payloads,
+    parse_last_seen,
     send_to_kentik,
 )
 
@@ -65,7 +66,8 @@ class CollectorTests(unittest.TestCase):
         self.assertIn("throughput_kbps=12000.0", wireless)
         self.assertIn("signal_strength_dbm=-58.0", wireless)
         self.assertIn("connected_at=\"2026-10-14T12:00:00Z\"", wireless)
-        self.assertIn("last_connected=\"10/14/2026 12:00:00 PM UTC\"", wireless)
+        self.assertIn("last_connected=10/14/2026\\ 12:00\\ PM\\ UTC", wireless)
+        self.assertNotIn("last_connected=\"", wireless)
         self.assertIn("transmitted_mb=120.5625", wireless)
         self.assertIn("loss_percent=0.5", "\n".join(metrics))
         self.assertIn("latency_ms=23.4", "\n".join(metrics))
@@ -73,6 +75,25 @@ class CollectorTests(unittest.TestCase):
     def test_last_connected_matches_dashboard_style_utc_format(self):
         self.assertEqual(format_last_connected(1791979200), "10/14/2026 12:00:00 PM UTC")
         self.assertEqual(format_last_connected(1791992312), "10/14/2026 3:38:32 PM UTC")
+        self.assertEqual(format_last_connected(1791992312, 3600), "10/14/2026 3:00 PM UTC")
+        self.assertEqual(format_last_connected(1791992312, 86400), "10/14/2026 12:00 AM UTC")
+
+    def test_parse_last_seen_accepts_epoch_string_and_iso(self):
+        self.assertEqual(parse_last_seen(1791979200), 1791979200.0)
+        self.assertEqual(parse_last_seen("1791979200"), 1791979200.0)
+        self.assertEqual(parse_last_seen(1791979200000), 1791979200.0)
+        self.assertEqual(parse_last_seen("2026-10-14T12:00:00Z"), 1791979200.0)
+        self.assertIsNone(parse_last_seen(None))
+        self.assertIsNone(parse_last_seen("not a date"))
+
+    def test_missing_last_seen_is_unknown(self):
+        payloads = mock_payloads()
+        for clients in payloads["wireless_clients"].values():
+            for client in clients:
+                client.pop("lastSeen", None)
+        metrics = build_metrics(payloads, "org-123", 1700000000000000000)
+        wireless = next(x for x in metrics if x.startswith("meraki_wireless_client,"))
+        self.assertIn("last_connected=unknown", wireless)
 
     def test_escaping(self):
         self.assertEqual(escape_tag("a b,c=d"), "a\\ b\\,c\\=d")

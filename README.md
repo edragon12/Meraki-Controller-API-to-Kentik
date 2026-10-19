@@ -62,7 +62,7 @@ python3 collector.py --mode real --dry-run
 
 `--mode real --dry-run` reads Meraki credentials and queries Meraki, but does not send anything to Kentik.
 
-The wireless client lookback defaults to 24 hours through `MERAKI_CLIENT_TIMESPAN=86400`; adjust it in `.env` if a shorter or longer view is needed. Client rows include `last_connected` as a Dashboard-style readable UTC value such as `10/14/2026 12:00:00 PM UTC`, while retaining the existing `connected_at` ISO-8601 field and point timestamp.
+The wireless client lookback defaults to 24 hours through `MERAKI_CLIENT_TIMESPAN=86400`; adjust it in `.env` if a shorter or longer view is needed. Client rows include `last_connected` as a **dimension** (text), such as `10/14/2026 12:00 PM UTC`, so Kentik tables can show it as a readable column. It is rounded down to `LAST_CONNECTED_ROUND_SECONDS` (default 3600 = hourly; 86400 = daily; 0 = exact seconds) because every new value creates a new series in Kentik. The ISO-8601 `connected_at` field and the point timestamp are unchanged.
 
 For larger organizations, the collector follows Meraki `Link` headers to retrieve additional pages. Transient Meraki and Kentik failures are retried with exponential backoff, and HTTP 429 responses honor `Retry-After`. Tune `HTTP_MAX_RETRIES`, `HTTP_RETRY_BACKOFF_SECONDS`, and `MERAKI_MAX_PAGES` in `.env` if needed.
 
