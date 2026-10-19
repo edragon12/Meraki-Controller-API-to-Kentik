@@ -1,0 +1,26 @@
+[Unit]
+Description=Meraki Dashboard to Kentik metrics collector
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=meraki-kentik
+Group=meraki-kentik
+WorkingDirectory=/opt/meraki-kentik
+EnvironmentFile=/etc/meraki-kentik/meraki-kentik.env
+ExecStart=/usr/bin/python3 /opt/meraki-kentik/collector.py --mode real --interval 300
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+StateDirectory=meraki-kentik
+ReadWritePaths=/var/lib/meraki-kentik
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
