@@ -17,7 +17,7 @@ Add `--dry-run` to any real run to print the metrics without sending them to Ken
 
 ## Quick start for Linux
 
-[**Download meraki-kentik-poc.tar.gz**](downloads/meraki-kentik-poc.tar.gz) contains the collector, the systemd installer and service file, `.env.example`, the Dockerfile, tests, and the dashboard screenshot.
+[**Download meraki-kentik-poc.tar.gz**](https://github.com/edragon12/Meraki-Controller-API-to-Kentik/raw/HEAD/downloads/meraki-kentik-poc.tar.gz) contains the collector, the systemd installer and service file, `.env.example`, the Dockerfile, tests, and the dashboard screenshot.
 
 On a Linux server with Python 3.9+ and systemd:
 
