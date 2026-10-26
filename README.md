@@ -6,41 +6,7 @@ Collects Cisco Meraki Dashboard API telemetry and sends it to Kentik NMS as Infl
 
 ## How it works
 
-```mermaid
-flowchart TB
-    classDef meraki fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
-    classDef step fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
-    classDef kentik fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:#e65100
-    classDef config fill:#f5f5f5,stroke:#757575,stroke-width:2px,stroke-dasharray: 5 3,color:#333333
-
-    subgraph MERAKI["MERAKI CLOUD"]
-        API["Meraki Dashboard API<br/><br/>Devices and status<br/>Uplink loss and latency<br/>Wireless connection stats<br/>Access points and SSIDs<br/>Wireless clients"]
-    end
-
-    subgraph HOST["YOUR HOST: Python script, Linux systemd service, or Docker"]
-        S1["Step 1: Poll<br/>every 300 seconds"]
-        S2["Step 2: Collect<br/>follow Link pagination<br/>retry with backoff<br/>honor 429 Retry-After"]
-        S3["Step 3: Convert<br/>Influx line protocol<br/>dimensions plus metrics"]
-        ENV[".env settings<br/>Meraki API key and org ID<br/>Kentik URL, email, token"]
-        S1 --> S2 --> S3
-    end
-
-    subgraph KENTIK["KENTIK"]
-        ING["Metrics ingest<br/>HTTPS POST"]
-        DASH["Dashboard tables<br/>Active Clients<br/>Access Points and SSIDs<br/>Wireless Connection<br/>Device Status"]
-        ING --> DASH
-    end
-
-    API -->|"HTTPS and JSON"| S2
-    S3 -->|"Influx line protocol"| ING
-    ENV -.->|"credentials"| S2
-    DRY["Dry run: prints the metrics<br/>and skips Kentik"] -.-> S3
-
-    class API meraki
-    class S1,S2,S3 step
-    class ING,DASH kentik
-    class ENV,DRY config
-```
+![How the Meraki-to-Kentik collector works: the Meraki Dashboard API feeds collector.py (poll, collect, convert), which sends Influx line protocol to Kentik NMS metrics and dashboard tables](docs/images/architecture.png)
 
 1. **Poll.** The collector runs on a schedule (every 300 seconds by default) and calls the Meraki Dashboard API with your API key.
 2. **Collect.** It follows `Link` header pagination, retries temporary failures with exponential backoff, and honors Meraki `Retry-After` limits on HTTP 429.
