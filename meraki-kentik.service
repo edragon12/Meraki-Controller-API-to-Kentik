@@ -9,6 +9,7 @@ User=meraki-kentik
 Group=meraki-kentik
 WorkingDirectory=/opt/meraki-kentik
 EnvironmentFile=/etc/meraki-kentik/meraki-kentik.env
+Environment=PYTHONUNBUFFERED=1
 ExecStart=/usr/bin/python3 /opt/meraki-kentik/collector.py --mode real --interval 300
 Restart=on-failure
 RestartSec=15
