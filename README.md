@@ -1,12 +1,18 @@
 # Meraki-to-Kentik metrics collector
 
-Collects Cisco Meraki Dashboard API telemetry and sends it to Kentik NMS as Influx line protocol. It uses only the Python standard library (Python 3.9 or newer). This repository and its packages **never include `.env` or credentials**.
+Python collector that streams Cisco Meraki Dashboard API telemetry to Kentik NMS (Influx line protocol), with systemd/Docker deploy.
 
-**Contents:** [How it works](#how-it-works) · [Quick start for Linux](#quick-start-for-linux) · [What you get in Kentik](#what-you-get-in-kentik) · [Install options](#install-options) · [Configuration](#configuration) · [Tests](#tests) · [Changelog](#changelog) · [Dashboard example](#kentik-dashboard-example) · [Troubleshooting](#troubleshooting)
+![Kentik Meraki Controller Dashboard built from meraki_wireless_client, meraki_wireless_access_point, meraki_wireless_connection, and meraki_device_status](docs/images/kentik-meraki-dashboard-v2.png)
+
+![How the Meraki-to-Kentik collector works: the Meraki Dashboard API feeds collector.py (poll, collect, convert), which sends Influx line protocol to Kentik NMS metrics and dashboard tables](docs/images/architecture.png)
+
+It uses only the Python standard library (Python 3.9 or newer). This repository and its packages **never include `.env` or credentials**.
+
+**Contents:** [How it works](#how-it-works) · [Quick start for Linux](#quick-start-for-linux) · [What you get in Kentik](#what-you-get-in-kentik) · [Install options](#install-options) · [Configuration](#configuration) · [Tests](#tests) · [Agent skill](#agent-skill) · [Changelog](#changelog) · [Dashboard example](#kentik-dashboard-example) · [Troubleshooting](#troubleshooting) · [License](#license)
 
 ## How it works
 
-![How the Meraki-to-Kentik collector works: the Meraki Dashboard API feeds collector.py (poll, collect, convert), which sends Influx line protocol to Kentik NMS metrics and dashboard tables](docs/images/architecture.png)
+The diagram above is the path from the Meraki Dashboard API through `collector.py` to Kentik.
 
 1. **Poll.** The collector runs on a schedule (every 300 seconds by default) and calls the Meraki Dashboard API with your API key.
 2. **Collect.** It follows `Link` header pagination, retries temporary failures with exponential backoff, and honors Meraki `Retry-After` limits on HTTP 429.
@@ -176,10 +182,17 @@ Copy `.env.example` to `.env`, or edit `/etc/meraki-kentik/meraki-kentik.env` fo
 python3 -m unittest -q
 ```
 
+The tests use mock payloads and injected HTTP handlers. They do not call Meraki or Kentik and do not need credentials. GitHub Actions runs `test_collector.py` on every push and pull request.
+
+## Agent skill
+
+`skills/meraki-kentik-metrics/` is an agent skill for configuring, testing, and troubleshooting this pipeline. `SKILL.md` tells an assistant to keep polling in the deterministic collector, start in mock mode, and never request or print API keys. `scripts/collector.py` and `tests/test_collector.py` are copies of the root collector and tests so the skill can run on its own. Deploy from the repository root (`collector.py`, `install-systemd.sh`, and the Dockerfile). The skill is operating guidance, not a second collector.
+
 ## Changelog
 
 **Unreleased**
 
+- Add an MIT license, show the Kentik dashboard and architecture images at the top of this README, document the `skills/` folder, and run `test_collector.py` in GitHub Actions.
 - Add `last_connected`, a readable UTC date/time dimension on `meraki_wireless_client`, rounded by `LAST_CONNECTED_ROUND_SECONDS` (default 3600).
 - Accept `lastSeen` as an epoch number, numeric string, millisecond epoch, or ISO-8601 date; emit `last_connected=unknown` when unavailable.
 - Keep `connected_at` (ISO-8601) as a field and `lastSeen` as the point timestamp.
@@ -189,9 +202,7 @@ python3 -m unittest -q
 
 ## Kentik dashboard example
 
-Example Kentik "Meraki Controller Dashboard" built from the `meraki_wireless_client`, `meraki_wireless_access_point`, `meraki_wireless_connection`, and `meraki_device_status` measurements.
-
-![Kentik Meraki Controller Dashboard](docs/images/kentik-meraki-dashboard-v2.png)
+Example Kentik "Meraki Controller Dashboard" built from the `meraki_wireless_client`, `meraki_wireless_access_point`, `meraki_wireless_connection`, and `meraki_device_status` measurements. The screenshot is at the top of this page.
 
 ## Troubleshooting
 
@@ -247,4 +258,8 @@ That is the numeric `connected` metric (true/false). Use the `last_connected` di
 
 ### Too many rows or stale rows in the client table
 Each distinct `last_connected` value is a separate series. Raise `LAST_CONNECTED_ROUND_SECONDS` (`3600` hourly, `86400` daily) to reduce churn.
+
+## License
+
+Released under the [MIT License](LICENSE). Copyright 2026 Martin Tully.
 
